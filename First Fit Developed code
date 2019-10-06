@@ -1,0 +1,694 @@
+using Build;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Data;
+using System.Diagnostics;
+
+
+internal class Program
+{
+
+    private static Random random = new Random(0);
+    // influence of pheromone on direction
+    private static int alpha = 3;
+    // influence of adjacent node distance
+    private static int beta = 2;
+
+    // pheromone decrease factor
+    private static double rho = 0.01;
+    // pheromone increase factor
+    private static double Q = 2.0;
+
+    public static void Main(string[] args)
+    {
+
+        try
+        {
+            Console.WriteLine("\nBegin Ant Colony Optimization demo\n");
+
+            int numCustomers = 60;
+            int numvehicles = 4;
+            int maxTime = 1000;
+
+            Console.WriteLine("Number of Customers  = " + numCustomers);
+
+            Console.WriteLine("\nNumber vehicles = " + numvehicles);
+            Console.WriteLine("Maximum time = " + maxTime);
+
+            Console.WriteLine("\nAlpha (pheromone influence) = " + alpha);
+            Console.WriteLine("Beta (local node influence) = " + beta);
+            Console.WriteLine("Rho (pheromone evaporation coefficient) = " + rho.ToString("F2"));
+            Console.WriteLine("Q (pheromone deposit factor) = " + Q.ToString("F2"));
+
+            Console.WriteLine("\nInitialing dummy graph distances");
+            int[][] dists = MakeGraphDistances(numCustomers);
+
+            Console.WriteLine("\nInitialing vehicles to random trails\n");
+            int[][] vehicles = Initvehicles(numvehicles, numCustomers);
+            // initialize vehicles to random trails
+            Showvehicles(vehicles, dists);
+
+            int[] bestTrail = Program.BestTrail(vehicles, dists);
+            // determine the best initial trail
+            double bestLength = Length(bestTrail, dists);
+            // the length of the best trail
+
+            Console.Write("\nBest initial trail length: " + bestLength.ToString("F1") + "\n");
+            //Display(bestTrail);
+
+            Console.WriteLine("\nInitializing pheromones on trails");
+            double[][] pheromones = InitPheromones(numCustomers);
+
+            int time = 0;
+            Console.WriteLine("\nEntering Updatevehicles - UpdatePheromones loop\n");
+            while (time < maxTime)
+            {
+                Updatevehicles(vehicles, pheromones, dists);
+                UpdatePheromones(pheromones, vehicles, dists);
+
+                int[] currBestTrail = Program.BestTrail(vehicles, dists);
+                double currBestLength = Length(currBestTrail, dists);
+                if (currBestLength < bestLength)
+                {
+                    bestLength = currBestLength;
+                    bestTrail = currBestTrail;
+                    Console.WriteLine("New best length of " + bestLength.ToString("F1") + " found at time " + time);
+                }
+                time += 1;
+            }
+
+            Console.WriteLine("\nTime complete");
+
+            Console.WriteLine("\nBest trail found:");
+            Display(bestTrail);
+            Console.WriteLine("\nLength of best trail found: " + bestLength.ToString("F1"));
+
+            Console.WriteLine("\nEnd Ant Colony Optimization demo\n");
+            Console.ReadLine();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+            Console.ReadLine();
+        }
+
+        Solve();
+    }
+
+    public static void Solve()
+    {
+        /*
+         * First, the program gathers user input by parsing. User input includes the total number of boxes,
+         * the number of each type of box and their dimensions, and the dimensions of the container.
+         * 
+         * Next, it arranges each Box into a List with help from the class Box.cs in order to store box dimension data,
+         * such as x & y position and length & width. It arranges it in descending order in terms of area (length * width).
+         * 
+         * Finally, it loops through every unit in the container to check whether or not a box can fit. Once a box is placed,
+         * the process starts over and it begins looping again. Once no more boxes can be placed, the algorithm is complete
+         * and the results are displayed on console.
+         */
+
+        try
+        {
+            //truck box output
+            Console.WriteLine("\nBegin Bin Load Project Demo\n");
+            Console.WriteLine("Please enter the total number of boxes:");
+            int totalBoxes = int.Parse(Console.ReadLine());
+
+            List<Box> boxList = new List<Box>(totalBoxes);
+            List<Box> packedBoxList = new List<Box>();
+            List<Box> unpackedBoxList = new List<Box>();
+
+            int boxCount = 0;
+
+            while (boxCount < totalBoxes)
+            {
+                if (boxCount == 0)
+                {
+                    Console.WriteLine("First line: please enter number of boxes.");
+                    Console.WriteLine("Second line: please enter integer length in inches.");
+                    Console.WriteLine("Third line: please enter integer width in inches.");
+                    Console.WriteLine("For example, an input of 3 boxes with dimensions 10 x 20 would be:\n3\n10\n20\n\n");
+                }
+
+                int numBoxes = int.Parse(Console.ReadLine());
+
+                int length = int.Parse(Console.ReadLine());
+                int height = int.Parse(Console.ReadLine());
+
+                for (int i = 0; i < numBoxes; i++)
+                {
+                    boxList.Add(new Box(length, height));
+                }
+
+                boxCount += numBoxes;
+
+                if (totalBoxes > boxCount)
+                {
+                    Console.WriteLine("\nPlease enter the rest of the boxes following the same format:\n");
+                }
+                else if (boxCount > totalBoxes)
+                {
+                    Console.WriteLine("Box count exceeded. Please restart registration:\n");
+                    boxCount = 0;
+                    boxList.Clear();
+                }
+            }
+            Console.WriteLine("Boxes have been successfully registered.\n");
+            Console.WriteLine("Here are all your box dimensions:");
+
+            int count = 1;
+            foreach (Box b in boxList)
+            {
+                Console.WriteLine("Box " + count++ + ": " + b.length + " x " + b.width);
+            }
+
+            Console.WriteLine("Now, we'll enter the container dimensions. Please enter the container length:");
+            int containerLength = int.Parse(Console.ReadLine());
+            Console.WriteLine("Now, please enter the container width:");
+            int containerWidth = int.Parse(Console.ReadLine());
+
+            //all default values are false
+            //true will specify filled
+            bool[,] container = new bool[containerLength, containerWidth];
+
+            Console.WriteLine("Calculating bin load...");
+
+            //first fit decreasing algorithm
+            boxList.Sort();
+            boxList.Reverse();
+            bool exit = false;
+            for (int i = 0; i < boxList.Count; i++)
+            {
+                Console.WriteLine("Checking box " + i);
+                exit = false;
+                for (int r = 0; r < containerLength; r++)
+                {
+
+                    if (boxList[i].length + r <= containerLength)
+                    {
+                        for (int c = 0; c < containerWidth; c++)
+                        {
+                            Console.WriteLine("Checking box slot x: " + c + ", y: " + r);
+
+                            //if already filled
+                            if (container[r, c])
+                            {
+                                continue;
+                            }
+                            //checking if in bounds
+                            else if (boxList[i].width + c <= containerWidth)
+                            {
+                                if (!IsFilled(c, r, boxList, i, container))
+                                {
+
+                                    //conditions have been met.
+                                    //add box and fill in positions
+                                    boxList[i].x = c;
+                                    boxList[i].y = r;
+                                    packedBoxList.Add(boxList[i]);
+                                    FillBoxes(c, r, boxList[i].length, boxList[i].width, container);
+
+                                    //exit out of two loops
+                                    //exit out of searching grid
+                                    exit = true;
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                //break out of current row
+                                break;
+                            }
+                        }
+
+                    }
+                    else
+                    {
+                        //break out and move on to next box
+                        exit = true;
+                    }
+
+                    if (exit)
+                    {
+                        //break out of grid search
+                        break;
+                    }
+                }
+            }
+
+            //add remainder boxes to unpacked box list
+            for (int i = packedBoxList.Count; i < boxList.Count; i++)
+            {
+                unpackedBoxList.Add(boxList[i]);
+            }
+
+            Console.WriteLine("\n\nCalculation completed. Displaying results now:\n\n");
+
+            for (int i = 0; i < packedBoxList.Count; i++)
+            {
+                Console.WriteLine(packedBoxList[i] + " packed at x: " + packedBoxList[i].x + " and y: " + packedBoxList[i].y);
+            }
+
+            Console.WriteLine(packedBoxList.Count + " packed boxes");
+            Console.WriteLine(unpackedBoxList.Count + " unpacked boxes");
+
+            Console.ReadLine();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+            Console.WriteLine(ex.StackTrace);
+            Console.ReadLine();
+        }
+
+        void FillBoxes(int x, int y, int length, int width, bool[,] container)
+        {
+            for (int r = y; r < y + length; r++)
+            {
+                for (int c = x; c < x + width; c++)
+                {
+                    container[r, c] = true;
+                }
+            }
+        }
+        bool IsFilled(int x, int y, List<Box> boxList, int index, bool[,] container)
+        {
+            //check for upper bounds of box
+            for (int i = x; i < x + boxList[index].width; i++)
+            {
+                if (container[y, i])
+                {
+                    return true;
+                }
+            }
+            //check for left bounds of box
+            for (int i = y; i < y + boxList[index].length; i++)
+            {
+                if (container[i, x])
+                {
+                    return true;
+                }
+            }
+            //check for right bounds of box
+            int end = boxList[index].width + x - 1;
+            for (int i = y; i < y + boxList[index].length; i++)
+            {
+                if (container[i, end])
+                {
+                    return true;
+                }
+            }
+            //check for bottom bounds of box
+            end = boxList[index].length + y - 1;
+            for (int i = x; i < x + boxList[index].width; i++)
+            {
+                if (container[end, i])
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+    }
+
+    // Main
+
+    // --------------------------------------------------------------------------------------------
+
+    private static int[][] Initvehicles(int numvehicles, int numCustomers)
+    {
+        int[][] vehicles = new int[numvehicles][];
+        for (int k = 0; k <= numvehicles - 1; k++)
+        {
+            int start = random.Next(0, numCustomers);
+            vehicles[k] = RandomTrail(start, numCustomers);
+        }
+        return vehicles;
+    }
+
+    private static int[] RandomTrail(int start, int numCustomers)
+    {
+        // helper for Initvehicles
+        int[] trail = new int[numCustomers];
+
+        // sequential
+        for (int i = 0; i <= numCustomers - 1; i++)
+        {
+            trail[i] = i;
+        }
+
+        // Fisher-Yates shuffle
+        for (int i = 0; i <= numCustomers - 1; i++)
+        {
+            int r = random.Next(i, numCustomers);
+            int tmp = trail[r];
+            trail[r] = trail[i];
+            trail[i] = tmp;
+        }
+
+        int idx = IndexOfTarget(trail, start);
+        // put start at [0]
+        int temp = trail[0];
+        trail[0] = trail[idx];
+        trail[idx] = temp;
+
+        return trail;
+    }
+
+    private static int IndexOfTarget(int[] trail, int target)
+    {
+        // helper for RandomTrail
+        for (int i = 0; i <= trail.Length - 1; i++)
+        {
+            if (trail[i] == target)
+            {
+                return i;
+            }
+        }
+        throw new Exception("Target not found in IndexOfTarget");
+    }
+
+    private static double Length(int[] trail, int[][] dists)
+    {
+        // total length of a trail
+        double result = 0.0;
+        for (int i = 0; i <= trail.Length - 2; i++)
+        {
+            result += Distance(trail[i], trail[i + 1], dists);
+        }
+        return result;
+    }
+
+    // -------------------------------------------------------------------------------------------- 
+
+    private static int[] BestTrail(int[][] vehicles, int[][] dists)
+    {
+        // best trail has shortest total length
+        double bestLength = Length(vehicles[0], dists);
+        int idxBestLength = 0;
+        for (int k = 1; k <= vehicles.Length - 1; k++)
+        {
+            double len = Length(vehicles[k], dists);
+            if (len < bestLength)
+            {
+                bestLength = len;
+                idxBestLength = k;
+            }
+        }
+        int numCustomers = vehicles[0].Length;
+        //INSTANT VB NOTE: The local variable bestTrail was renamed since Visual Basic will not allow local variables with the same name as their enclosing function or property:
+        int[] bestTrail_Renamed = new int[numCustomers];
+        vehicles[idxBestLength].CopyTo(bestTrail_Renamed, 0);
+        return bestTrail_Renamed;
+    }
+
+    // --------------------------------------------------------------------------------------------
+
+    private static double[][] InitPheromones(int numCustomers)
+    {
+        double[][] pheromones = new double[numCustomers][];
+        for (int i = 0; i <= numCustomers - 1; i++)
+        {
+            pheromones[i] = new double[numCustomers];
+        }
+        for (int i = 0; i <= pheromones.Length - 1; i++)
+        {
+            for (int j = 0; j <= pheromones[i].Length - 1; j++)
+            {
+                pheromones[i][j] = 0.01;
+                // otherwise first call to Updatevehicles -> BuiuldTrail -> NextNode -> MoveProbs => all 0.0 => throws
+            }
+        }
+        return pheromones;
+    }
+
+    // --------------------------------------------------------------------------------------------
+
+    private static void Updatevehicles(int[][] vehicles, double[][] pheromones, int[][] dists)
+    {
+        int numCustomers = pheromones.Length;
+        for (int k = 0; k <= vehicles.Length - 1; k++)
+        {
+            int start = random.Next(0, numCustomers);
+            int[] newTrail = BuildTrail(k, start, pheromones, dists);
+            vehicles[k] = newTrail;
+        }
+    }
+
+    private static int[] BuildTrail(int k, int start, double[][] pheromones, int[][] dists)
+    {
+        int numCustomers = pheromones.Length;
+        int[] trail = new int[numCustomers];
+        bool[] visited = new bool[numCustomers];
+        trail[0] = start;
+        visited[start] = true;
+        for (int i = 0; i <= numCustomers - 2; i++)
+        {
+            int cityX = trail[i];
+            int next = NextCity(k, cityX, visited, pheromones, dists);
+            trail[i + 1] = next;
+            visited[next] = true;
+        }
+        return trail;
+    }
+
+    private static int NextCity(int k, int cityX, bool[] visited, double[][] pheromones, int[][] dists)
+    {
+        // for ant k (with visited[]), at nodeX, what is next node in trail?
+        double[] probs = MoveProbs(k, cityX, visited, pheromones, dists);
+
+        double[] cumul = new double[probs.Length + 1];
+        for (int i = 0; i <= probs.Length - 1; i++)
+        {
+            cumul[i + 1] = cumul[i] + probs[i];
+            // consider setting cumul[cuml.Length-1] to 1.00
+        }
+
+        double p = random.NextDouble();
+
+        for (int i = 0; i <= cumul.Length - 2; i++)
+        {
+            if (p >= cumul[i] && p < cumul[i + 1])
+            {
+                return i;
+            }
+        }
+        throw new Exception("Failure to return valid city in NextCity");
+    }
+
+    private static double[] MoveProbs(int k, int cityX, bool[] visited, double[][] pheromones, int[][] dists)
+    {
+        // for ant k, located at nodeX, with visited[], return the prob of moving to each city
+        int numCustomers = pheromones.Length;
+        double[] taueta = new double[numCustomers];
+        // inclues cityX and visited Customers
+        double sum = 0.0;
+        // sum of all tauetas
+        // i is the adjacent city
+        for (int i = 0; i <= taueta.Length - 1; i++)
+        {
+            if (i == cityX)
+            {
+                taueta[i] = 0.0;
+                // prob of moving to self is 0
+            }
+            else if (visited[i] == true)
+            {
+                taueta[i] = 0.0;
+                // prob of moving to a visited city is 0
+            }
+            else
+            {
+                taueta[i] = Math.Pow(pheromones[cityX][i], alpha) * Math.Pow((1.0 / Distance(cityX, i, dists)), beta);
+                // could be huge when pheromone[][] is big
+                if (taueta[i] < 0.0001)
+                {
+                    taueta[i] = 0.0001;
+                }
+                else if (taueta[i] > (double.MaxValue / (numCustomers * 100)))
+                {
+                    taueta[i] = double.MaxValue / (numCustomers * 100);
+                }
+            }
+            sum += taueta[i];
+        }
+
+        double[] probs = new double[numCustomers];
+        for (int i = 0; i <= probs.Length - 1; i++)
+        {
+            probs[i] = taueta[i] / sum;
+            // big trouble if sum = 0.0
+        }
+        return probs;
+    }
+
+    // --------------------------------------------------------------------------------------------
+
+    private static void UpdatePheromones(double[][] pheromones, int[][] vehicles, int[][] dists)
+    {
+        for (int i = 0; i <= pheromones.Length - 1; i++)
+        {
+            for (int j = i + 1; j <= pheromones[i].Length - 1; j++)
+            {
+                for (int k = 0; k <= vehicles.Length - 1; k++)
+                {
+                    double length = Program.Length(vehicles[k], dists);
+                    // length of ant k trail
+                    double decrease = (1.0 - rho) * pheromones[i][j];
+                    double increase = 0.0;
+                    if (EdgeInTrail(i, j, vehicles[k]) == true)
+                    {
+                        increase = (Q / length);
+                    }
+
+                    pheromones[i][j] = decrease + increase;
+
+                    if (pheromones[i][j] < 0.0001)
+                    {
+                        pheromones[i][j] = 0.0001;
+                    }
+                    else if (pheromones[i][j] > 100000.0)
+                    {
+                        pheromones[i][j] = 100000.0;
+                    }
+
+                    pheromones[j][i] = pheromones[i][j];
+                }
+            }
+        }
+    }
+
+    private static bool EdgeInTrail(int cityX, int cityY, int[] trail)
+    {
+        // are cityX and cityY adjacent to each other in trail[]?
+        int lastIndex = trail.Length - 1;
+        int idx = IndexOfTarget(trail, cityX);
+
+        if (idx == 0 && trail[1] == cityY)
+        {
+            return true;
+        }
+        else if (idx == 0 && trail[lastIndex] == cityY)
+        {
+            return true;
+        }
+        else if (idx == 0)
+        {
+            return false;
+        }
+        else if (idx == lastIndex && trail[lastIndex - 1] == cityY)
+        {
+            return true;
+        }
+        else if (idx == lastIndex && trail[0] == cityY)
+        {
+            return true;
+        }
+        else if (idx == lastIndex)
+        {
+            return false;
+        }
+        else if (trail[idx - 1] == cityY)
+        {
+            return true;
+        }
+        else if (trail[idx + 1] == cityY)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+
+    // --------------------------------------------------------------------------------------------
+
+    private static int[][] MakeGraphDistances(int numCustomers)
+    {
+        int[][] dists = new int[numCustomers][];
+        for (int i = 0; i <= dists.Length - 1; i++)
+        {
+            dists[i] = new int[numCustomers];
+        }
+        for (int i = 0; i <= numCustomers - 1; i++)
+        {
+            for (int j = i + 1; j <= numCustomers - 1; j++)
+            {
+                int d = random.Next(1, 9);
+                // [1,8]
+                dists[i][j] = d;
+                dists[j][i] = d;
+            }
+        }
+        return dists;
+    }
+
+    private static double Distance(int cityX, int cityY, int[][] dists)
+    {
+        return dists[cityX][cityY];
+    }
+
+    // --------------------------------------------------------------------------------------------
+
+    private static void Display(int[] trail)
+    {
+        for (int i = 0; i <= trail.Length - 1; i++)
+        {
+            Console.Write(trail[i] + " ");
+            if (i > 0 && i % 20 == 0)
+            {
+                Console.WriteLine("");
+            }
+        }
+        Console.WriteLine("");
+    }
+
+
+    private static void Showvehicles(int[][] vehicles, int[][] dists)
+    {
+        for (int i = 0; i <= vehicles.Length - 1; i++)
+        {
+            Console.Write(i + ": [ ");
+
+            for (int j = 0; j <= 3; j++)
+            {
+                Console.Write(vehicles[i][j] + " ");
+            }
+
+            Console.Write(". . . ");
+
+            for (int j = vehicles[i].Length - 4; j <= vehicles[i].Length - 1; j++)
+            {
+                Console.Write(vehicles[i][j] + " ");
+            }
+
+            Console.Write("] len = ");
+            double len = Length(vehicles[i], dists);
+            Console.Write(len.ToString("F1"));
+            Console.WriteLine("");
+        }
+    }
+
+    private static void Display(double[][] pheromones)
+    {
+        for (int i = 0; i <= pheromones.Length - 1; i++)
+        {
+            Console.Write(i + ": ");
+            for (int j = 0; j <= pheromones[i].Length - 1; j++)
+            {
+                Console.Write(pheromones[i][j].ToString("F4").PadLeft(8) + " ");
+            }
+            Console.WriteLine("");
+        }
+
+    }
+
+}
+
